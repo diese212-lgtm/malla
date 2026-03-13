@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Planner Medicina UC - Personalizable</title>
+    <style>
+        :root {
+            --fondo: #fffafb;
+            --tarjeta: #ffffff;
+            --borde-soft: #f9ebed;
+            --texto-p: #6b5b5d;
+            --primario: #f7dadd;
+            --aprobado: #e2f3e1;
+            --paralelo: #fff0db;
+            --bloqueado: #f2f2f2;
+            --tag: #e8eaf6;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--fondo); color: var(--texto-p); margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        
+        header { 
+            background: white; padding: 15px 40px; border-bottom: 3px solid var(--primario);
+            display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        }
+
+        .controles-admin {
+            background: #fff; padding: 15px; border-bottom: 1px solid var(--borde-soft);
+            display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+        }
+
+        input, select, button {
+            padding: 8px 12px; border: 1px solid var(--borde-soft); border-radius: 10px; outline: none;
+        }
+
+        .btn-add { background: var(--primario); color: white; border: none; cursor: pointer; font-weight: bold; }
+        .btn-add:hover { opacity: 0.8; }
+
+        .malla-wrapper { display: flex; overflow-x: auto; padding: 20px; gap: 20px; flex-grow: 1; align-items: flex-start; }
+        
+        .columna-año { 
+            min-width: 280px; background: rgba(255,255,255,0.7); border: 1px solid var(--borde-soft);
+            border-radius: 15px; padding: 15px;
+        }
+
+        .columna-año h2 { text-align: center; font-size: 0.9rem; color: #b58d94; margin-bottom: 15px; border-bottom: 1px dotted var(--borde-soft); }
+
+        .materia { 
+            background: var(--tarjeta); border: 1px solid var(--borde-soft); border-left: 6px solid var(--tag);
+            border-radius: 10px; padding: 12px; margin-bottom: 12px; cursor: pointer; position: relative;
+        }
+
+        .materia:hover:not(.bloqueada) { transform: translateY(-2px); }
+        .aprobada { background: var(--aprobado) !important; }
+        .paralelo { background: var(--paralelo) !important; }
+        .bloqueada { background: var(--bloqueado); opacity: 0.5; cursor: not-allowed; }
+
+        .materia-nombre { display: block; font-weight: 600; font-size: 0.72rem; margin-bottom: 5px; }
+        .materia-info { display: flex; justify-content: space-between; font-size: 0.6rem; color: #999; }
+        
+        .btn-del { position: absolute; top: 5px; right: 5px; color: #ffb3ba; border: none; background: none; cursor: pointer; display: none; }
+        .materia:hover .btn-del { display: block; }
+
+        ::-webkit-scrollbar { height: 8px; }
+        ::-webkit-scrollbar-thumb { background: var(--primario); border-radius: 10px; }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+<header>
+    <div>
+        <h1 style="margin:0; font-size:1.3rem; color:#b58d94;">Medicina UC</h1>
+        <small>PENSUM 2013 - CARABOBO</small>
+    </div>
+    <div id="status">0 Materias Listas</div>
+    <button class="btn-reset" onclick="resetAll()" style="background:none; border:1px solid #f7dadd; border-radius:15px; cursor:pointer;">Reiniciar</button>
+</header>
+
+<div class="controles-admin">
+    <input type="text" id="newName" placeholder="Nombre de la materia">
+    <input type="text" id="newCod" placeholder="Código (ej. MG5101)">
+    <select id="newYear">
+        <option value="1">1º Año</option>
+        <option value="2">2º Año</option>
+        <option value="3">3º Año</option>
+        <option value="4">4º Año</option>
+        <option value="5">5º Año</option>
+        <option value="6">6º Año</option>
+    </select>
+    <button class="btn-add" onclick="addNewSubject()">+ Añadir Materia</button>
+</div>
+
+<div class="malla-wrapper" id="mallaContainer"></div>
+
+<script>
+// Materias base del Pensum 2013 de la UC
+const baseSubjects = [
+    { id: "11", año: 1, nombre: "ANATOMÍA HUMANA", cod: "11", pre: [] },
+    { id: "12", año: 1, nombre: "HISTOLOGÍA Y EMBRIOLOGÍA", cod: "12", pre: [] },
+    { id: "17", año: 1, nombre: "SALUD Y SOCIEDAD", cod: "17", pre: [] },
+    { id: "16", año: 1, nombre: "ESTADÍSTICA Y DEMOGRAFÍA", cod: "16", pre: [] },
+    { id: "15", año: 1, nombre: "HISTORIA DE LA MEDICINA", cod: "15", pre: [] },
+    { id: "IL", año: 1, nombre: "INGLÉS INSTRUMENTAL", cod: "IL", pre: [] },
+    { id: "14", año: 1, nombre: "ARTE Y CULTURA", cod: "14", pre: [] },
+    { id: "23", año: 2, nombre: "FISIOLOGÍA Y BIOFÍSICA", cod: "23", pre: ["11"] },
+    { id: "21", año: 2, nombre: "BIOQUÍMICA", cod: "21", pre: ["12"] },
+    { id: "13", año: 2, nombre: "PSICOLOGÍA MÉDICA", cod: "13", pre: [] },
+    { id: "24", año: 2, nombre: "PRÁCTICA MÉDICA", cod: "24", pre: ["11"] },
+    { id: "25", año: 2, nombre: "EDUCACIÓN PARA LA SALUD", cod: "25", pre: [] },
+    { id: "26", año: 2, nombre: "PROCES. Y ANÁLISIS DE INFORMACIÓN", cod: "26", pre: ["16"] },
+    { id: "31", año: 3, nombre: "PARASITOLOGÍA", cod: "31", pre: ["21", "23"] },
+    { id: "32", año: 3, nombre: "SEMIOLOGÍA", cod: "32", pre: ["23", "24"] },
+    { id: "34", año: 3, nombre: "FISIOPATOLOGÍA", cod: "34", pre: ["23"] },
+    { id: "35", año: 3, nombre: "MEDICINA PSICOSOMÁTICA", cod: "35", pre: [] },
+    { id: "22", año: 3, nombre: "MICROBIOLOGÍA", cod: "22", pre: ["21", "23"] },
+    { id: "47", año: 3, nombre: "INMUNOLOGÍA", cod: "47", pre: ["21", "23"] },
+    { id: "33", año: 4, nombre: "FARMACOLOGÍA", cod: "33", pre: ["32", "34"] },
+    { id: "41", año: 4, nombre: "ANATOMÍA PATOLÓGICA", cod: "41", pre: ["34"] },
+    { id: "42", año: 4, nombre: "CLÍNICA MÉDICA Y TERAPÉUTICA I", cod: "42", pre: ["32", "34"] },
+    { id: "43", año: 4, nombre: "CLÍNICA QUIRÚRGICA I", cod: "43", pre: ["32", "34"] },
+    { id: "44", año: 4, nombre: "CLÍNICA PEDIÁTRICA I", cod: "44", pre: ["32", "34"] },
+    { id: "45", año: 4, nombre: "CLÍNICA OBSTÉTRICA Y GINECOLÓGICA I", cod: "45", pre: ["32", "34"] },
+    { id: "46", año: 4, nombre: "PSICOPATOLOGÍA", cod: "46", pre: [] },
+    { id: "51", año: 5, nombre: "CLÍNICA MÉDICA Y TERAPÉUTICA II", cod: "51", pre: ["33", "42"] },
+    { id: "52", año: 5, nombre: "CLÍNICA QUIRÚRGICA II", cod: "52", pre: ["33", "43"] },
+    { id: "53", año: 5, nombre: "CLÍNICA PEDIÁTRICA II", cod: "53", pre: ["33", "44"] },
+    { id: "54", año: 5, nombre: "CLÍNICA OBSTÉTRICA Y GINECOLÓGICA II", cod: "54", pre: ["33", "45"] },
+    { id: "56", año: 5, nombre: "MEDICINA LEGAL", cod: "56", pre: ["41"] },
+    { id: "62", año: 6, nombre: "CLÍNICA MÉDICA TERAPÉUTICA III", cod: "62", pre: ["51"] },
+    { id: "63", año: 6, nombre: "CLÍNICA QUIRÚRGICA III", cod: "63", pre: ["52"] },
+    { id: "65", año: 6, nombre: "CLÍNICA OBSTÉTRICA Y GINECOLÓGICA III", cod: "65", pre: ["54"] },
+    { id: "64", año: 6, nombre: "CLÍNICA PEDIÁTRICA III", cod: "64", pre: ["53"] },
+    { id: "66", año: 6, nombre: "PASANTÍA SALUD PÚBLICA", cod: "66", pre: ["55", "56"] }
+];
+
+let customSubjects = JSON.parse(localStorage.getItem('uc_custom_subs')) || [];
+let progress = JSON.parse(localStorage.getItem('uc_med_progress')) || {};
+
+function render() {
+    const container = document.getElementById('mallaContainer');
+    const allSubjects = [...baseSubjects, ...customSubjects];
+    container.innerHTML = '';
+    
+    let aprobadasCount = Object.values(progress).filter(v => v === 1).length;
+    document.getElementById('status').innerText = `${aprobadasCount} Materias Listas`;
+
+    for (let i = 1; i <= 6; i++) {
+        const col = document.createElement('div');
+        col.className = 'columna-año';
+        col.innerHTML = `<h2>${i}º Año</h2>`;
+        
+        allSubjects.filter(m => m.año == i).forEach(m => {
+            const status = progress[m.id] || 0;
+            const habilitada = m.pre.every(p => progress[p] === 1 || progress[p] === 2);
+            
+            const card = document.createElement('div');
+            card.className = `materia ${!habilitada ? 'bloqueada' : ''} ${status === 1 ? 'aprobada' : (status === 2 ? 'paralelo' : '')}`;
+            
+            card.innerHTML = `
+                <button class="btn-del" onclick="deleteSubject('${m.id}')">✕</button>
+                <span class="materia-nombre">${m.nombre}</span>
+                <div class="materia-info"><span>${m.cod}</span><span>UC</span></div>
+            `;
+
+            card.onclick = (e) => { 
+                if(e.target.className === 'btn-del') return;
+                if(habilitada) updateProgress(m.id, 1); 
+            };
+            card.ondblclick = () => { if(habilitada) updateProgress(m.id, 2); };
+            
+            col.appendChild(card);
+        });
+        container.appendChild(col);
+    }
+}
+
+function addNewSubject() {
+    const name = document.getElementById('newName').value;
+    const cod = document.getElementById('newCod').value;
+    const year = document.getElementById('newYear').value;
+
+    if(!name || !cod) return alert("Por favor completa el nombre y código");
+
+    const newSub = { id: 'custom_'+Date.now(), año: parseInt(year), nombre: name.toUpperCase(), cod: cod, pre: [] };
+    customSubjects.push(newSub);
+    localStorage.setItem('uc_custom_subs', JSON.stringify(customSubjects));
+    render();
+    
+    document.getElementById('newName').value = '';
+    document.getElementById('newCod').value = '';
+}
+
+function deleteSubject(id) {
+    if(!id.startsWith('custom_')) return alert("Las materias del pensum base no se pueden eliminar.");
+    customSubjects = customSubjects.filter(s => s.id !== id);
+    localStorage.setItem('uc_custom_subs', JSON.stringify(customSubjects));
+    delete progress[id];
+    localStorage.setItem('uc_med_progress', JSON.stringify(progress));
+    render();
+}
+
+function updateProgress(id, val) {
+    progress[id] = (progress[id] === val) ? 0 : val;
+    localStorage.setItem('uc_med_progress', JSON.stringify(progress));
+    render();
+}
+
+function resetAll() {
+    if(confirm("¿Segura? Se borrará todo tu progreso y materias añadidas.")) {
+        progress = {};
+        customSubjects = [];
+        localStorage.clear();
+        render();
+    }
+}
+
+render();
+</script>
+</body>
+</html>
